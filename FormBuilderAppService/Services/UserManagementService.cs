@@ -626,6 +626,32 @@ namespace FormBuilderAppService.Services
         private static void ValidateProfileFields(
             string firstName, string lastName, string userName, List<string> errors)
         {
+            ValidateNameFields(firstName, lastName, errors);
+
+            var userNameError = ValidateUserNameFormat(userName);
+
+            if (userNameError is not null)
+            {
+                errors.Add(userNameError);
+            }
+        }
+
+        /// <summary>
+        /// Just the two name fields, without the username.
+        ///
+        /// Public and split out for AuthService's self-service profile edit, which
+        /// validates its username through <see cref="CheckUserNameAsync"/> instead - that
+        /// call already applies <see cref="ValidateUserNameFormat"/> and then goes on to
+        /// check the name is free, so running the format rules here as well would report
+        /// the same problem twice.
+        ///
+        /// Shared rather than reimplemented so "what is an acceptable name" has exactly
+        /// one definition: an admin creating an account, an admin editing one, and a user
+        /// editing their own profile all answer that question the same way.
+        /// </summary>
+        public static void ValidateNameFields(
+            string firstName, string lastName, List<string> errors)
+        {
             if (string.IsNullOrWhiteSpace(firstName))
             {
                 errors.Add("First name is required.");
@@ -642,13 +668,6 @@ namespace FormBuilderAppService.Services
             else if (lastName.Length > 100)
             {
                 errors.Add("Last name cannot be longer than 100 characters.");
-            }
-
-            var userNameError = ValidateUserNameFormat(userName);
-
-            if (userNameError is not null)
-            {
-                errors.Add(userNameError);
             }
         }
 
@@ -726,8 +745,8 @@ namespace FormBuilderAppService.Services
 
                 // Accounts that pre-date the FirstName/LastName columns - the seeded ones -
                 // only have FullName, so the table would otherwise show a blank name.
-                FirstName = user.FirstName ?? FirstWord(fullName),
-                LastName = user.LastName ?? RemainingWords(fullName),
+                FirstName = user.FirstName ?? SplitFullName(fullName).FirstName,
+                LastName = user.LastName ?? SplitFullName(fullName).LastName,
 
                 FullName = fullName,
                 Email = user.Email ?? string.Empty,
@@ -744,16 +763,27 @@ namespace FormBuilderAppService.Services
             };
         }
 
-        private static string FirstWord(string value)
+        /// <summary>
+        /// Best guess at the two name parts of a stored FullName, for accounts that
+        /// pre-date the FirstName/LastName columns - the seeded ones have only FullName,
+        /// and a dialog bound to two blank boxes would save those blanks over the name
+        /// that is actually there.
+        ///
+        /// Only ever a fallback: whenever the real columns hold a value, that value wins.
+        ///
+        /// Public because AuthService maps the same account into CurrentUserDto for
+        /// /api/auth/me and has to arrive at the same two values. A second copy of this
+        /// rule would let the profile card and the User Details table disagree about what
+        /// somebody is called.
+        /// </summary>
+        public static (string FirstName, string LastName) SplitFullName(string fullName)
         {
-            var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length > 0 ? parts[0] : string.Empty;
-        }
+            var parts = (fullName ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        private static string RemainingWords(string value)
-        {
-            var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length > 1 ? string.Join(' ', parts.Skip(1)) : string.Empty;
+            return (
+                parts.Length > 0 ? parts[0] : string.Empty,
+                parts.Length > 1 ? string.Join(' ', parts.Skip(1)) : string.Empty);
         }
 
         private static string Describe(IdentityResult result) =>

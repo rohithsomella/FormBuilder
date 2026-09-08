@@ -13,6 +13,8 @@
  *   Auth.isAdmin()                    ->  boolean
  *   Auth.requireAuth()                ->  page guard; call once per protected page
  *   Auth.refreshCurrentUser()         ->  re-reads the user from GET /api/auth/me
+ *   Auth.applySession(session)        ->  installs a token+user handed back by the API
+ *   Auth.consumeSignOutNotice()       ->  reads and clears the "why you were signed out"
  *
  * Two things this file is NOT:
  *
@@ -124,6 +126,13 @@ var Auth = (function () {
             userName: user.userName,
             email: user.email,
             fullName: user.fullName,
+
+            // Carried separately as well as inside fullName, because the Edit Profile
+            // dialog has a box for each. Splitting fullName on the first space instead
+            // guesses wrong for a two-word first name, and the dialog saves what it shows.
+            firstName: user.firstName || '',
+            lastName: user.lastName || '',
+
             roles: roles,
             isAdmin: admin,
 
@@ -136,6 +145,28 @@ var Auth = (function () {
         localStorage.setItem(KEYS.token, loginResponse.token);
         localStorage.setItem(KEYS.expiresAt, loginResponse.expiresAtUtc);
         localStorage.setItem(KEYS.user, JSON.stringify(toStoredUser(loginResponse.user)));
+    }
+
+    /**
+     * Installs a session that came back from something other than login.
+     *
+     * PUT /api/auth/profile returns one: a token minted from the row as it now stands,
+     * because renaming yourself leaves the name claim in your old token stale and that
+     * claim is what the API stamps its audit columns from. Swapping it in here is what
+     * lets a user rename themselves without being signed out by their own edit.
+     *
+     * Refuses anything that is not a complete session rather than half-applying one -
+     * writing a user without its matching token would leave the page showing a profile
+     * the token no longer describes.
+     *
+     * @param {Object} session - { token, expiresAtUtc, user }
+     * @returns {Object|null} the stored user, or the existing one if nothing was applied
+     */
+    function applySession(session) {
+        if (!session || !session.token || !session.user) return getCurrentUser();
+
+        storeSession(session);
+        return getCurrentUser();
     }
 
     /**
@@ -182,12 +213,45 @@ var Auth = (function () {
     }
 
     /**
+     * Why the user is looking at the login page when they did not ask to sign out.
+     *
+     * sessionStorage, not localStorage, for two reasons: clearSession() wipes the
+     * localStorage keys and would take this with it, and a notice is about this tab's
+     * journey to the login page - it has no business appearing in another tab.
+     */
+    var NOTICE_KEY = 'fb_signOutNotice';
+
+    /** Reads the pending notice and clears it, so a refresh does not show it twice. */
+    function consumeSignOutNotice() {
+        try {
+            var notice = sessionStorage.getItem(NOTICE_KEY);
+            sessionStorage.removeItem(NOTICE_KEY);
+            return notice;
+        } catch (e) {
+            return null; // private mode
+        }
+    }
+
+    /**
      * Signs out. The API call is best-effort - with stateless tokens the session ends
      * when the client forgets the token - but clearing local state is not optional.
+     *
+     * @param {Object} [options]
+     * @param {boolean} [options.redirect] - false to stay on the current page
+     * @param {string}  [options.notice] - shown on the login page. For sign-outs the user
+     *        did not ask for: changing your own password invalidates every token for the
+     *        account, so the page they land on should say why rather than looking like a
+     *        session that expired on its own.
      */
     function logout(options) {
         var redirect = !options || options.redirect !== false;
         var token = getToken();
+
+        if (options && options.notice) {
+            try {
+                sessionStorage.setItem(NOTICE_KEY, options.notice);
+            } catch (e) { /* private mode - the redirect still happens */ }
+        }
 
         var done = function () {
             // clearSession() removes the token from localStorage, which is shared by
@@ -469,6 +533,8 @@ var Auth = (function () {
         getToken: getToken,
         getCurrentUser: getCurrentUser,
         refreshCurrentUser: refreshCurrentUser,
+        applySession: applySession,
+        consumeSignOutNotice: consumeSignOutNotice,
         isAuthenticated: isAuthenticated,
         isAdmin: isAdmin,
         requireAuth: requireAuth,

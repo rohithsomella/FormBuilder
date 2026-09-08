@@ -12,6 +12,13 @@ var FormBuilderApi = (function() {
         baseUrl: 'http://localhost:5155/api/forms',
         tenantBaseUrl: 'http://localhost:5155/api/tenant',
         userBaseUrl: 'http://localhost:5155/api/users',
+
+        // Self-service profile endpoints. A different controller to userBaseUrl on
+        // purpose: /api/users is Admin-only and every route on it names the user being
+        // acted on, while these take the account from the token and can only ever touch
+        // the caller's own row.
+        authBaseUrl: 'http://localhost:5155/api/auth',
+
         contentType: 'application/json'
     };
 
@@ -589,6 +596,254 @@ var FormBuilderApi = (function() {
                     errorMessage = 'The delete endpoint was not found (404). If the API was updated recently, restart it.';
                 } else if (xhr.status === 403) {
                     errorMessage = 'You do not have permission to delete users.';
+                } else if (xhr.status === 0) {
+                    errorMessage = 'Network error: Cannot reach the API server. Make sure the backend is running.';
+                }
+
+                if (onError) {
+                    onError(errorMessage, xhr.status);
+                }
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- own profile
+    //
+    // The Edit Profile dialog on userProfile.html and adminProfile.html. These four are
+    // [Authorize] only - any signed-in user may call them - because none of them accept
+    // a user id: the account comes from the token, so a request cannot be aimed at
+    // somebody else's row. Do not add an id parameter to any of them.
+
+    /**
+     * Check whether a username is free - backs the "Verify" button in the Edit Profile
+     * dialog.
+     *
+     * The caller's own account is excluded server-side, so pressing Verify without
+     * having changed the box answers "this is your current username" rather than
+     * reporting the name back as taken. There is deliberately no excludeUserId argument
+     * here, unlike checkUserName above: the API takes it from the token.
+     *
+     * @param {string} userName - The username to check
+     * @param {Function} onSuccess - Callback receiving { userName, isAvailable, message }
+     * @param {Function} onError - Callback function on error
+     */
+    function checkOwnUserName(userName, onSuccess, onError) {
+        if (!userName) {
+            console.error('Username is required for verification');
+            if (onError) {
+                onError('Username is required', 400);
+            }
+            return;
+        }
+
+        $.ajax({
+            url: config.authBaseUrl + '/username-availability?userName=' + encodeURIComponent(userName),
+            type: 'GET',
+            contentType: config.contentType,
+            dataType: 'json',
+            success: function (response) {
+                console.log('Username availability:', response);
+                if (onSuccess) {
+                    onSuccess(response);
+                }
+            },
+            error: function (xhr) {
+                console.error('Error checking username availability');
+
+                var errorMessage = 'Error checking username';
+
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMessage = xhr.responseJSON.message;
+                } else if (xhr.status === 404) {
+                    errorMessage = 'The username check endpoint was not found (404). If the API was updated recently, restart it.';
+                } else if (xhr.status === 0) {
+                    errorMessage = 'Network error: Cannot reach the API server. Make sure the backend is running.';
+                }
+
+                if (onError) {
+                    onError(errorMessage, xhr.status);
+                }
+            }
+        });
+    }
+
+    /**
+     * Save the signed-in user's own first name, last name and username.
+     *
+     * The response is a full login payload - { token, expiresAtUtc, user } - not just the
+     * updated user. Renaming yourself leaves the name claim in your token stale, and that
+     * claim is what the API stamps its audit columns from, so it hands back a token
+     * minted from the row as it now stands. The caller MUST install it with
+     * Auth.applySession(), or every later request spends the session signing edits under
+     * a username that no longer exists.
+     *
+     * Roles and isActive are not sent and would not be accepted - a user cannot grant
+     * themselves a role or re-enable their own account through this.
+     *
+     * @param {Object} profileData - { firstName, lastName, userName }
+     * @param {Function} onSuccess - Callback receiving { token, expiresAtUtc, user }
+     * @param {Function} onError - Callback function on error
+     */
+    function updateOwnProfile(profileData, onSuccess, onError) {
+        if (!profileData) {
+            console.error('Profile data is required');
+            if (onError) {
+                onError('Profile data is required', 400);
+            }
+            return;
+        }
+
+        var payload = {
+            firstName: profileData.firstName || '',
+            lastName: profileData.lastName || '',
+            userName: profileData.userName || ''
+        };
+
+        $.ajax({
+            url: config.authBaseUrl + '/profile',
+            type: 'PUT',
+            contentType: config.contentType,
+            dataType: 'json',
+            data: JSON.stringify(payload),
+            success: function (response) {
+                console.log('Profile updated successfully for:', response && response.user && response.user.userName);
+                if (onSuccess) {
+                    onSuccess(response);
+                }
+            },
+            error: function (xhr) {
+                console.error('Error updating profile');
+
+                var errorMessage = 'Error updating profile';
+
+                // errors carries every field the request got wrong, so all of them are
+                // fixed in one go rather than one save attempt at a time.
+                if (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors.length) {
+                    errorMessage = xhr.responseJSON.errors.join(' ');
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMessage = xhr.responseJSON.message;
+                } else if (xhr.status === 404) {
+                    // The API's own "your account is gone" 404 carries a message and was
+                    // handled above, so a bodyless one is an unmatched route - which is
+                    // what an API still running an older build looks like.
+                    errorMessage = 'The profile endpoint was not found (404). If the API was updated recently, restart it.';
+                } else if (xhr.status === 0) {
+                    errorMessage = 'Network error: Cannot reach the API server. Make sure the backend is running.';
+                }
+
+                if (onError) {
+                    onError(errorMessage, xhr.status);
+                }
+            }
+        });
+    }
+
+    /**
+     * Change the signed-in user's own password.
+     *
+     * currentPassword is what authorises this - holding a token is not enough, because a
+     * token is what an unattended browser leaves lying around.
+     *
+     * The API answers 204 and hands back NO replacement token, unlike updateOwnProfile.
+     * Changing a password rotates the account's security stamp, which the API checks on
+     * every request, so every token for this account - including the one that made this
+     * call - is now refused. The caller must sign the user back in.
+     *
+     * Nothing here logs the payload, and nothing added to it ever should: this is the one
+     * request on these pages carrying real credentials.
+     *
+     * @param {Object} passwords - { currentPassword, newPassword, confirmPassword }
+     * @param {Function} onSuccess - Callback function on success (no body is returned)
+     * @param {Function} onError - Callback function on error
+     */
+    function changeOwnPassword(passwords, onSuccess, onError) {
+        if (!passwords) {
+            console.error('Password details are required');
+            if (onError) {
+                onError('Password details are required', 400);
+            }
+            return;
+        }
+
+        var payload = {
+            currentPassword: passwords.currentPassword || '',
+            newPassword: passwords.newPassword || '',
+            confirmPassword: passwords.confirmPassword || ''
+        };
+
+        $.ajax({
+            url: config.authBaseUrl + '/password',
+            type: 'PUT',
+            contentType: config.contentType,
+            data: JSON.stringify(payload),
+
+            // No dataType: 204 has an empty body, and asking jQuery to parse that as JSON
+            // turns a successful change into a parsererror.
+            success: function () {
+                console.log('Password changed; every existing token for this account is now invalid.');
+                if (onSuccess) {
+                    onSuccess();
+                }
+            },
+            error: function (xhr) {
+                console.error('Error changing password');
+
+                var errorMessage = 'Error changing password';
+
+                // errors carries every policy rule the new password missed.
+                if (xhr.responseJSON && xhr.responseJSON.errors && xhr.responseJSON.errors.length) {
+                    errorMessage = xhr.responseJSON.errors.join(' ');
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMessage = xhr.responseJSON.message;
+                } else if (xhr.status === 404) {
+                    errorMessage = 'The password endpoint was not found (404). If the API was updated recently, restart it.';
+                } else if (xhr.status === 0) {
+                    errorMessage = 'Network error: Cannot reach the API server. Make sure the backend is running.';
+                }
+
+                if (onError) {
+                    onError(errorMessage, xhr.status);
+                }
+            }
+        });
+    }
+
+    /**
+     * Deactivate the signed-in user's own account.
+     *
+     * Sets IsActive = false. Not a delete - the row stays, so their forms and submissions
+     * keep resolving - but it is one-way from the UI: login refuses an inactive account,
+     * so only an admin can switch it back on. Confirm before calling.
+     *
+     * The API refuses this outright for an Admin account and answers 400, because an
+     * admin who suspends themselves may be the only person who could have undone it.
+     *
+     * Answers 204. The account can no longer hold a session, so the caller must sign out.
+     *
+     * @param {Function} onSuccess - Callback function on success (no body is returned)
+     * @param {Function} onError - Callback function on error
+     */
+    function deactivateOwnAccount(onSuccess, onError) {
+        $.ajax({
+            url: config.authBaseUrl + '/deactivate',
+            type: 'PUT',
+
+            // No dataType: 204 has an empty body. See changeOwnPassword.
+            success: function () {
+                console.log('Account deactivated; this session is over.');
+                if (onSuccess) {
+                    onSuccess();
+                }
+            },
+            error: function (xhr) {
+                console.error('Error deactivating account');
+
+                var errorMessage = 'Error deactivating account';
+
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMessage = xhr.responseJSON.message;
+                } else if (xhr.status === 404) {
+                    errorMessage = 'The deactivate endpoint was not found (404). If the API was updated recently, restart it.';
                 } else if (xhr.status === 0) {
                     errorMessage = 'Network error: Cannot reach the API server. Make sure the backend is running.';
                 }
@@ -2052,6 +2307,10 @@ function displayPaginatedForms() {
         updateUser: updateUser,
         setUserPassword: setUserPassword,
         deleteUser: deleteUser,
+        checkOwnUserName: checkOwnUserName,
+        updateOwnProfile: updateOwnProfile,
+        changeOwnPassword: changeOwnPassword,
+        deactivateOwnAccount: deactivateOwnAccount,
         getFormById: getFormById,
         saveForm: saveForm,
         updateForm: updateForm,

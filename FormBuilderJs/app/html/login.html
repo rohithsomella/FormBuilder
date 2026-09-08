@@ -76,6 +76,16 @@
         // token or a stale profile can never bleed into the next sign-in.
         Auth.clearSession();
 
+        // Why they are here, when they did not click Sign Out. Changing your own password
+        // invalidates every token for the account, so without this the profile page would
+        // simply dump the user at a login form with no explanation. It lives in
+        // sessionStorage, which clearSession() above does not touch; consuming it means a
+        // refresh of this page does not show it a second time.
+        var notice = Auth.consumeSignOutNotice();
+        if (notice) {
+            document.getElementById('loginHint').textContent = notice;
+        }
+
         function showError(message) {
             errorBox.textContent = message;
             errorBox.style.display = 'block';

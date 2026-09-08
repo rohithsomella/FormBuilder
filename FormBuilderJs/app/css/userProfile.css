@@ -284,6 +284,35 @@ html, body {
     padding: 24px;
 }
 
+/*
+    Whatever the API refused, at the top of the dialog. Same colours as .modal-error in
+    userDetails.css so the two dialogs report a failure the same way - restated here
+    rather than shared because the profile pages do not load that stylesheet.
+*/
+.modal-error {
+    background: #fdecea;
+    border: 1px solid #f5c6cb;
+    color: #a4262c;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+/*
+    The Verify button's verdict, under the username box. min-height reserves the line so
+    showing and clearing it does not shift the fields below.
+*/
+.username-feedback {
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 16px;
+}
+
+.username-feedback.ok { color: #218838; }
+.username-feedback.error { color: #c82333; }
+.username-feedback.checking { color: #999; }
+
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -543,12 +572,73 @@ html, body {
     border-bottom: 2px solid #cbd5e1;
 }
 
+/* These three boxes are always editable - nothing locks them - so they are always
+   white. Grey only means "locked" on the pencil-toggled fields above. */
+.password-section .form-group input {
+    background-color: #ffffff;
+}
+
+/* Without this the shared autofill rule repaints a remembered password grey again. */
+.password-section .form-group input:-webkit-autofill,
+.password-section .form-group input:-webkit-autofill:hover,
+.password-section .form-group input:-webkit-autofill:focus,
+.password-section .form-group input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #ffffff inset !important;
+}
+
 .password-section .form-group {
     margin-bottom: 16px;
 }
 
 .password-section .form-group:last-child {
     margin-bottom: 0;
+}
+
+/*
+    Show-password eye. Present on all three boxes, always - see the note in the markup.
+
+    The eye sits inside the box rather than beside it, so the three rows keep the same
+    width and rhythm as the name and username fields above them. Same look as
+    .btn-password-reveal in userDetails.css, restated here because the profile pages do
+    not load that stylesheet.
+*/
+.password-input-wrap {
+    position: relative;
+}
+
+/*
+    Two classes deep on purpose. `.form-group input` further up sets the padding on every
+    box in this dialog, and at equal specificity it would win on source order - this has
+    to beat it so the revealed text never runs under the eye.
+*/
+.password-section .password-input-wrap input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 42px;
+}
+
+.btn-password-reveal {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #888;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.btn-password-reveal:hover {
+    background: #f0f0fc;
+    color: #5f5de8;
 }
 
 /* Deactivate User Button */

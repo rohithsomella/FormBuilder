@@ -122,6 +122,13 @@
         </div>
 
         <form id="editProfileForm">
+            <!--
+                Whatever the API refused, in one place at the top of the dialog. The
+                previous version reported everything through alert(), which cannot show
+                more than one problem and disappears before the user can act on it.
+            -->
+            <div class="modal-error" id="editProfileError" style="display: none;"></div>
+
             <div class="form-row">
                 <div class="form-group">
                     <label>FIRST NAME</label>
@@ -155,6 +162,8 @@
                             <i class="bi bi-pencil"></i>
                         </button>
                     </div>
+                    <!-- The Verify button's verdict. Cleared whenever the box is edited. -->
+                    <div class="username-feedback" id="editProfileUserNameFeedback"></div>
                 </div>
                 <div class="form-row-with-button-actions">
                     <button type="button" class="btn-change-password" id="btnChangePassword">
@@ -172,19 +181,48 @@
                     <span>Change Password</span>
                 </div>
                 
+                <!--
+                    All three boxes are type="password" - masked by default - and all
+                    three carry the eye button that reveals them. It is always present, on
+                    every box: a password you cannot read back is one you cannot check
+                    before committing to it, and that applies as much to the current
+                    password (worth re-reading before blaming the server for refusing it)
+                    as to the two new ones that have to match each other.
+                -->
                 <div class="form-group">
                     <label>CURRENT PASSWORD</label>
-                    <input type="password" id="currentPassword" placeholder="Enter current password" />
+                    <div class="password-input-wrap">
+                        <input type="password" id="currentPassword" placeholder="Enter current password"
+                               autocomplete="current-password" spellcheck="false" />
+                        <button type="button" class="btn-password-reveal" data-reveals="currentPassword"
+                                title="Show password" aria-label="Show password">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="form-group">
                     <label>NEW PASSWORD</label>
-                    <input type="password" id="newPassword" placeholder="Enter new password" />
+                    <div class="password-input-wrap">
+                        <input type="password" id="newPassword" placeholder="Enter new password"
+                               autocomplete="new-password" spellcheck="false" />
+                        <button type="button" class="btn-password-reveal" data-reveals="newPassword"
+                                title="Show password" aria-label="Show password">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="form-group">
                     <label>CONFIRM PASSWORD</label>
-                    <input type="password" id="confirmPassword" placeholder="Confirm new password" />
+                    <div class="password-input-wrap">
+                        <input type="password" id="confirmPassword" placeholder="Confirm new password"
+                               autocomplete="new-password" spellcheck="false" />
+                        <button type="button" class="btn-password-reveal" data-reveals="confirmPassword"
+                                title="Show password" aria-label="Show password">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -198,6 +236,13 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="../js/CommonItems.js"></script>
+    <!--
+        Every request this page makes goes through FormBuilderApi, the same as every other
+        page. It must load before userProfile.js, which calls into it, and it also gives
+        auth.js the API host to derive its own /auth URLs from - so the hardcoded fallback
+        in both files stops being what this page actually runs on.
+    -->
+    <script src="../js/FormBuilderApi.js"></script>
     <script src="../js/userProfile.js"></script>
 </body>
 
