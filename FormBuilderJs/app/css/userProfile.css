@@ -313,6 +313,41 @@ html, body {
 .username-feedback.error { color: #c82333; }
 .username-feedback.checking { color: #999; }
 
+/*
+    Confirmation that a save landed, shown on the PAGE rather than in the dialog - the
+    dialog closes on success, so a message inside it would be destroyed in the same
+    moment it was written.
+
+    Lives as the first child of .wireframe-card, which is why it needs no width or
+    centering of its own: the card supplies both, so the notice lines up with the fields
+    below it at every viewport. Putting it in .profile-page-container instead does NOT
+    work - that is display:flex in a row, so the notice becomes a narrow column beside
+    the card rather than a banner above the content.
+
+    Sized and spaced to match .modal-error above; only the colours differ, so a success
+    and a failure read as the same kind of object in the same visual language. The green
+    is the one already used by .admin-api-status.ok on adminProfile.html.
+*/
+.page-notice {
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 24px;
+}
+
+.page-notice.ok {
+    background: #e6f6ec;
+    border: 1px solid #c3e6cb;
+    color: #1d7a41;
+}
+
+/* "Nothing to save" is not an achievement, so it is deliberately not green. */
+.page-notice.info {
+    background: #eef0f4;
+    border: 1px solid #d6dae1;
+    color: #556;
+}
+
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;

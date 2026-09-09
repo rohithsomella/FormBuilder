@@ -48,6 +48,22 @@
     <div class="profile-page-container">
         <div class="wireframe-card">
 
+            <!--
+                Confirmation that a save landed. Lives on the page, not in the dialog,
+                because the dialog closes the moment a save succeeds.
+
+                Inside the card on purpose: .profile-page-container is a flex ROW, so a
+                banner placed there is laid out beside the card instead of above the
+                content. The card is an ordinary block, so it stacks correctly and
+                inherits the width the fields already use.
+
+                role="status" rather than "alert": this is good news the user asked for,
+                so it waits for a natural pause instead of interrupting. Errors keep the
+                assertive role="alert" inside the dialog.
+            -->
+            <div class="page-notice" id="profilePageNotice" role="status" aria-live="polite"
+                 style="display: none;"></div>
+
             <!-- Top Row: Circle Avatar + Name + Role -->
             <div class="header-wireframe-layout">
                 <div class="profile-pic-circle" id="profileAvatar">--</div>
@@ -126,8 +142,13 @@
                 Whatever the API refused, in one place at the top of the dialog. The
                 previous version reported everything through alert(), which cannot show
                 more than one problem and disappears before the user can act on it.
+
+                role="alert" is assertive on purpose: this appears in response to the user
+                pressing Save, and it is the reason the thing they asked for did not
+                happen, so it is worth interrupting for. showEditProfileError() reveals
+                the banner before writing into it - see the note there.
             -->
-            <div class="modal-error" id="editProfileError" style="display: none;"></div>
+            <div class="modal-error" id="editProfileError" role="alert" style="display: none;"></div>
 
             <div class="form-row">
                 <div class="form-group">
@@ -162,15 +183,32 @@
                             <i class="bi bi-pencil"></i>
                         </button>
                     </div>
-                    <!-- The Verify button's verdict. Cleared whenever the box is edited. -->
-                    <div class="username-feedback" id="editProfileUserNameFeedback"></div>
+                    <!--
+                        The Verify button's verdict. Cleared whenever the box is edited.
+
+                        Polite rather than assertive: the answer is worth hearing but the
+                        user may still be typing, and it never blocks anything. aria-atomic
+                        makes it read as one sentence instead of only the words that
+                        changed. The node is always in the tree and only its text changes,
+                        so this needs no help from the script.
+                    -->
+                    <div class="username-feedback" id="editProfileUserNameFeedback"
+                         aria-live="polite" aria-atomic="true"></div>
                 </div>
+                <!--
+                    No "Deactive Account" button here, unlike userProfile.html. The API
+                    refuses to deactivate an Admin account at all - an admin who suspends
+                    themselves may be the only one able to undo it - so offering the button
+                    only bought a scare-confirm followed by a 400. routeToCorrectProfile()
+                    guarantees an admin lands on this page, so removing it here removes it
+                    for exactly the people it never worked for.
+
+                    The refusal in AuthService.DeactivateOwnAccountAsync is what enforces
+                    this. Deleting a button is not a control.
+                -->
                 <div class="form-row-with-button-actions">
                     <button type="button" class="btn-change-password" id="btnChangePassword">
                         Change Password
-                    </button>
-                    <button type="button" class="btn-deactivate-user" id="btnDeactivateUser">
-                        Deactive Account
                     </button>
                 </div>
             </div>

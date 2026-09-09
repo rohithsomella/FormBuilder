@@ -38,7 +38,18 @@ namespace FormBuilderAppService.Services.Interfaces
         /// being edited: without it, verifying a username the admin has not changed would
         /// find that user's own row and report their existing name as taken.
         /// </param>
-        Task<UserNameAvailabilityDto> CheckUserNameAsync(string? userName, Guid? excludeUserId = null);
+        /// <param name="revealReservedReason">
+        /// Whether a name held by a soft-deleted account may be reported as such, rather
+        /// than as plainly taken.
+        ///
+        /// Defaults to FALSE, so forgetting the argument discloses nothing. Only the
+        /// Admin-only endpoint on UsersController opts in, where the deleted row is not
+        /// on screen and the refusal would otherwise look like a bug; every other caller
+        /// - including the self-service endpoint any signed-in user can reach - must not
+        /// confirm that a deleted account ever existed.
+        /// </param>
+        Task<UserNameAvailabilityDto> CheckUserNameAsync(
+            string? userName, Guid? excludeUserId = null, bool revealReservedReason = false);
 
         /// <summary>
         /// Validates the request, creates the account in AspNetUsers with a generated

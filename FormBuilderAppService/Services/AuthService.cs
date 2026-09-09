@@ -127,7 +127,15 @@ namespace FormBuilderAppService.Services
             // currentUserId comes from the token and is passed as excludeUserId, so the
             // caller's own name never reads as taken. This is the same method the admin
             // dialog's Verify button calls, which is why Verify and Save cannot disagree.
-            _userManagementService.CheckUserNameAsync(userName, currentUserId);
+            //
+            // revealReservedReason: false is the default, and is passed anyway. Any
+            // signed-in user can call this, so it must not distinguish "taken" from
+            // "belonged to a deleted account" - that turns the Verify button into a way
+            // to enumerate accounts that were deleted in order to stop being visible.
+            // Stating it means this guarantee is visible at the call site rather than
+            // resting on a default somebody could later flip. UsersController opts in.
+            _userManagementService.CheckUserNameAsync(
+                userName, currentUserId, revealReservedReason: false);
 
         public async Task<UpdateProfileResult> UpdateProfileAsync(
             Guid userId, UpdateProfileRequest request, string updatedBy)

@@ -4,6 +4,7 @@ using FormBuilderAppService.Models.DTOs.Users;
 using FormBuilderAppService.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace FormBuilderAppService.Controllers
 {
@@ -140,11 +141,20 @@ namespace FormBuilderAppService.Controllers
         /// account to ignore is the caller's own and is taken from the token: a
         /// caller-supplied one would let anybody exclude any account they liked from a
         /// uniqueness check and then be told a name in use was free.
+        ///
+        /// Rate limited, and the service is asked not to explain a reserved name. This
+        /// endpoint answers "does this account exist" to ANY signed-in user, where the
+        /// admin equivalent on UsersController is Admin-only - so it must not hand back
+        /// a distinct message for a soft-deleted account, and must not answer fast enough
+        /// to be walked through a word list. The available/taken distinction itself has
+        /// to remain: without it the Verify button cannot do its job.
         /// </summary>
         [Authorize]
+        [EnableRateLimiting(RateLimitPolicies.SelfServiceUserName)]
         [HttpGet("username-availability")]
         [ProducesResponseType(typeof(UserNameAvailabilityDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> CheckOwnUserName([FromQuery] string? userName)
         {
             if (CurrentUserId is not { } currentUserId)
@@ -244,13 +254,21 @@ namespace FormBuilderAppService.Controllers
         /// defeat the point: a password change is meant to end the sessions that were
         /// running under the old password, and this browser has no more claim to an
         /// exemption than any other. The client signs the user back in.
+        ///
+        /// Rate limited per account. The service checks the current password without
+        /// counting failures towards Identity's lockout - on purpose, so mistyping your
+        /// own password here cannot lock you out of logging in - which leaves nothing
+        /// bounding how many guesses somebody holding a stolen token may make. This
+        /// policy is that bound, and being refused by it still leaves login working.
         /// </summary>
         [Authorize]
+        [EnableRateLimiting(RateLimitPolicies.SelfServicePassword)]
         [HttpPut("password")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
         {
             if (request is null)

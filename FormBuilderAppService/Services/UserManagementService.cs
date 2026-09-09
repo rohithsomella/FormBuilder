@@ -69,7 +69,7 @@ namespace FormBuilderAppService.Services
         }
 
         public async Task<UserNameAvailabilityDto> CheckUserNameAsync(
-            string? userName, Guid? excludeUserId = null)
+            string? userName, Guid? excludeUserId = null, bool revealReservedReason = false)
         {
             var candidate = userName?.Trim() ?? string.Empty;
 
@@ -112,11 +112,19 @@ namespace FormBuilderAppService.Services
 
             // Matches what CreateUserAsync would say. A name held by a soft-deleted row
             // is genuinely unavailable, but for a reason the admin cannot see in the list.
+            //
+            // revealReservedReason is what separates the two callers. An admin managing
+            // the user list needs that distinction - the row is not on screen, so without
+            // it the refusal looks like a bug. A self-service caller does not: every
+            // signed-in user can reach /api/auth/username-availability, and a message
+            // that says "deleted account" turns it into a way to enumerate accounts that
+            // were removed precisely so they would stop being visible. Collapsed into the
+            // plain "already taken", which is equally true and says nothing extra.
             return new UserNameAvailabilityDto
             {
                 UserName = candidate,
                 IsAvailable = false,
-                Message = existing.IsDeleted
+                Message = existing.IsDeleted && revealReservedReason
                     ? $"'{candidate}' belonged to a deleted account and is still reserved."
                     : $"'{candidate}' is already taken."
             };
@@ -738,6 +746,10 @@ namespace FormBuilderAppService.Services
                 ? user.FullName!
                 : $"{user.FirstName} {user.LastName}".Trim();
 
+            // Split once. This runs per row of the user list, and AuthService.ToDto
+            // already hoists it the same way for the single-user mapping.
+            var (fallbackFirst, fallbackLast) = SplitFullName(fullName);
+
             return new UserListItemDto
             {
                 UserId = user.Id,
@@ -745,8 +757,8 @@ namespace FormBuilderAppService.Services
 
                 // Accounts that pre-date the FirstName/LastName columns - the seeded ones -
                 // only have FullName, so the table would otherwise show a blank name.
-                FirstName = user.FirstName ?? SplitFullName(fullName).FirstName,
-                LastName = user.LastName ?? SplitFullName(fullName).LastName,
+                FirstName = user.FirstName ?? fallbackFirst,
+                LastName = user.LastName ?? fallbackLast,
 
                 FullName = fullName,
                 Email = user.Email ?? string.Empty,

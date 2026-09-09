@@ -111,8 +111,14 @@ namespace FormBuilderAppService.Controllers
             {
                 // excludeUserId is optional and only sent by the Edit dialog, so the user
                 // being edited does not clash with their own existing username.
+                //
+                // revealReservedReason is opted into HERE and nowhere else. The default is
+                // false so that a caller who forgets it discloses nothing; this endpoint is
+                // Admin-only, and an admin refused a username needs to be told the holder
+                // is a soft-deleted row - it is absent from the user list, so without the
+                // reason the refusal looks like a bug in the dialog.
                 var availability = await _userManagementService
-                    .CheckUserNameAsync(userName, excludeUserId);
+                    .CheckUserNameAsync(userName, excludeUserId, revealReservedReason: true);
 
                 return Ok(availability);
             }

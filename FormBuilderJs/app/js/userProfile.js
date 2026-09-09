@@ -21,19 +21,35 @@
     var currentUser = null;
 
     /**
-     * What the Verify button was last told about the username box, so Save can refuse a
-     * name the API has already said is taken instead of spending a round trip on it.
+     * The last username Verify reported as TAKEN, so Save can refuse it without spending
+     * a round trip on an answer it already has.
      *
-     * Both are cleared the moment the box is edited: a verdict about "jdoe" says nothing
-     * about "jdoe2", and a stale tick beside a different name is worse than no tick.
+     * Only the refusal is remembered. There is no matching "verified" field because
+     * nothing would read it: not having verified at all is a perfectly good state, since
+     * the API checks again on save and that is the check that counts.
+     *
+     * Cleared the moment the box is edited: a verdict about "jdoe" says nothing about
+     * "jdoe2", and a stale one beside a different name is worse than none.
      */
-    var userNameCheck = {
-        verifiedUserName: null,
-        takenUserName: null
-    };
+    var takenUserName = null;
+
+    /**
+     * The three profile values the dialog was opened with, so Save can tell whether the
+     * user actually changed any of them.
+     *
+     * Recorded here rather than compared against currentUser at save time because this is
+     * exactly the question being asked - "is what is in the boxes different from what was
+     * put in them" - and currentUser reaches those boxes through a fallback path of its
+     * own (see openEditProfileModal), so re-deriving would not always agree with what was
+     * on screen.
+     */
+    var openedWith = { firstName: '', lastName: '', userName: '' };
 
     /** Guards against a second submit while one is already in flight. */
     var isSaving = false;
+
+    /** Countdown that clears the page notice, held so a later save can cancel it. */
+    var noticeTimer = null;
 
     document.addEventListener('DOMContentLoaded', function () {
         Auth.requireAuth().then(function (user) {
@@ -143,7 +159,7 @@
             });
         }
 
-        // Editing the box after verifying clears the verdict - see userNameCheck.
+        // Editing the box after verifying clears the verdict - see takenUserName.
         var userNameInput = document.getElementById('editUserName');
         if (userNameInput) {
             userNameInput.addEventListener('input', clearUserNameFeedback);
@@ -186,6 +202,20 @@
             document.getElementById('editFirstName').value = firstName;
             document.getElementById('editLastName').value = lastName;
             document.getElementById('editUserName').value = currentUser.userName || '';
+
+            // What Save compares against to decide whether the profile needs writing at
+            // all. Read back off the boxes, and trimmed the same way getValue() trims, so
+            // "unchanged" means the same thing on both sides of the comparison.
+            openedWith = {
+                firstName: getValue('editFirstName'),
+                lastName: getValue('editLastName'),
+                userName: getValue('editUserName')
+            };
+
+            // The confirmation from the previous save describes a finished action. Left
+            // on screen behind an open dialog it reads as a comment on the edit now in
+            // progress, and would still be sitting there if this one failed.
+            hidePageNotice();
 
             // Nothing left over from the last time this dialog was open.
             hideEditProfileError();
@@ -409,21 +439,14 @@
         FormBuilderApi.checkOwnUserName(
             userName,
             function (result) {
-                if (result.isAvailable) {
-                    userNameCheck.verifiedUserName = userName;
-                    userNameCheck.takenUserName = null;
-                    setUserNameFeedback(result.message, 'ok');
-                } else {
-                    userNameCheck.verifiedUserName = null;
-                    userNameCheck.takenUserName = userName;
-                    setUserNameFeedback(result.message, 'error');
-                }
+                takenUserName = result.isAvailable ? null : userName;
+                setUserNameFeedback(result.message, result.isAvailable ? 'ok' : 'error');
             },
             function (error) {
-                // A check that could not be made is not a verdict. Both are cleared so
-                // Save does not act on a stale one either way.
-                userNameCheck.verifiedUserName = null;
-                userNameCheck.takenUserName = null;
+                // A check that could not be made is not a verdict. Cleared, so Save does
+                // not act on a stale one - including a 429 from the rate limiter, which
+                // says nothing about the name itself.
+                takenUserName = null;
                 setUserNameFeedback(error, 'error');
             }
         );
@@ -433,7 +456,7 @@
      * The dialog's Save button. Can carry two independent changes, and the order they go
      * in is not a preference:
      *
-     *   1. the profile fields, then
+     *   1. the profile fields, but only if any of them actually changed
      *   2. the password, but only if the Change Password panel is open
      *
      * The password MUST go second. Changing it rotates the account's security stamp,
@@ -443,6 +466,12 @@
      *
      * The profile call the other way round is harmless: it hands back a replacement token
      * that the password call then uses.
+     *
+     * Skipping the profile call when nothing changed is not just an economy. The name
+     * boxes are disabled until their pencil is clicked, and an account whose stored name
+     * is a single word opens this dialog with an empty, disabled Last Name box - so
+     * validating fields the user never touched would refuse a password change outright,
+     * with an error pointing at a field they cannot reach and did not want to edit.
      */
     function saveEditProfile() {
         if (isSaving) return;
@@ -455,19 +484,43 @@
 
         var wantsPasswordChange = isPasswordSectionOpen();
 
+        var profileChanged = firstName !== openedWith.firstName
+            || lastName !== openedWith.lastName
+            || userName !== openedWith.userName;
+
         // Read exactly as typed. A leading or trailing space is a legitimate password
         // character, and trimming would send something other than what was entered.
         var currentPassword = wantsPasswordChange ? rawValue('currentPassword') : '';
         var newPassword = wantsPasswordChange ? rawValue('newPassword') : '';
         var confirmPassword = wantsPasswordChange ? rawValue('confirmPassword') : '';
 
-        var validationError = validateProfileFields(firstName, lastName, userName)
+        // Each half is validated only if it is being sent. The API validates whatever it
+        // receives regardless, and is the authority either way.
+        var validationError = (profileChanged
+                ? validateProfileFields(firstName, lastName, userName)
+                : null)
             || (wantsPasswordChange
                 ? validatePasswordFields(currentPassword, newPassword, confirmPassword)
                 : null);
 
         if (validationError) {
             showEditProfileError(validationError);
+            return;
+        }
+
+        if (!profileChanged) {
+            if (!wantsPasswordChange) {
+                // Save with nothing to save. No request is made - a write here would only
+                // stamp Updated/UpdatedBy and mint a token to replace an identical one -
+                // but the user still pressed a button and is owed an answer, and "saved"
+                // would not be a truthful one.
+                closeEditProfileModal();
+                showPageNotice('No changes to save.', 'info');
+                return;
+            }
+
+            setSaving(true);
+            changeUserPassword(currentPassword, newPassword, confirmPassword, false);
             return;
         }
 
@@ -481,15 +534,32 @@
                 // longer exist under that name - including for the password call below.
                 var updated = Auth.applySession(session);
 
+                // These values are now what the account holds, so they become the new
+                // baseline. Without this the dialog would still be comparing against what
+                // it opened with, and a second Save - correcting a mistyped current
+                // password, or retrying after a 429 - would re-send a profile PUT that
+                // writes the values already there and mints a token to replace an
+                // identical one. Only reachable when the password half fails, because
+                // that is the one path that leaves this dialog open after a write.
+                openedWith = {
+                    firstName: firstName,
+                    lastName: lastName,
+                    userName: userName
+                };
+
                 render(updated || currentUser);
 
                 if (!wantsPasswordChange) {
                     setSaving(false);
                     closeEditProfileModal();
+                    showPageNotice('Your profile has been updated.', 'ok');
                     return;
                 }
 
-                changeUserPassword(currentPassword, newPassword, confirmPassword);
+                // No notice on this branch. A password change ends the session, so the
+                // page is about to be replaced by the login screen - which carries its own
+                // message saying exactly that.
+                changeUserPassword(currentPassword, newPassword, confirmPassword, true);
             },
             function (error) {
                 setSaving(false);
@@ -499,14 +569,19 @@
     }
 
     /**
-     * Second half of a save that included a password change.
+     * The password half of a save.
      *
      * Success ends the session on purpose and there is no way around it: the API rotates
      * the account's security stamp, so every token issued for this account - this one
      * included - stops being accepted. Signing back in with the new password is the
      * point of having changed it.
+     *
+     * profileWasSaved only affects what a FAILURE says. Reached from the profile call's
+     * success handler it is true and there is a completed write to warn about; reached
+     * directly, because the name boxes were untouched, it is false and claiming a save
+     * that never happened would send the user looking for a change that is not there.
      */
-    function changeUserPassword(currentPassword, newPassword, confirmPassword) {
+    function changeUserPassword(currentPassword, newPassword, confirmPassword, profileWasSaved) {
         FormBuilderApi.changeOwnPassword(
             {
                 currentPassword: currentPassword,
@@ -526,11 +601,12 @@
             function (error) {
                 setSaving(false);
 
-                // The profile half already succeeded and cannot be unwound here. Saying so
-                // is the difference between the user retyping their password and the user
-                // retyping their name as well.
-                showEditProfileError(
-                    'Your name and username were saved, but the password was not changed. ' + error);
+                // When there was a profile half, it already succeeded and cannot be
+                // unwound here. Saying so is the difference between the user retyping
+                // their password and the user retyping their name as well.
+                showEditProfileError(profileWasSaved
+                    ? 'Your name and username were saved, but the password was not changed. ' + error
+                    : error);
             }
         );
     }
@@ -583,8 +659,7 @@
 
         // Only blocks on a name Verify actually reported as taken. Not having verified at
         // all is fine - the API checks again on save, and that is the check that counts.
-        if (userNameCheck.takenUserName &&
-            userNameCheck.takenUserName.toLowerCase() === userName.toLowerCase()) {
+        if (takenUserName && takenUserName.toLowerCase() === userName.toLowerCase()) {
             return 'That username is already taken. Choose a different one.';
         }
 
@@ -630,13 +705,69 @@
         var banner = document.getElementById('editProfileError');
         if (!banner) return;
 
-        banner.textContent = message;
+        // Shown BEFORE the text is written, and the order is the whole point. The banner
+        // carries role="alert", and a live region only announces changes made while it is
+        // in the accessibility tree - filling it while it is still display:none and
+        // revealing it afterwards leaves a screen reader user with a silent failure.
         banner.style.display = 'block';
+        banner.textContent = message;
     }
 
     function hideEditProfileError() {
         var banner = document.getElementById('editProfileError');
-        if (banner) banner.style.display = 'none';
+        if (!banner) return;
+
+        banner.style.display = 'none';
+
+        // Emptied, not just hidden. Two reasons, both about role="alert": revealing the
+        // node before writing to it would otherwise flash the PREVIOUS message, and an
+        // error repeated identically would leave the text unchanged - which some screen
+        // readers treat as nothing to announce, so the second failure passes in silence.
+        banner.textContent = '';
+    }
+
+    /**
+     * Confirmation shown on the page after the dialog has closed.
+     *
+     * It has to live outside the dialog: a successful save closes the dialog, so anything
+     * written inside it would be hidden in the same instant. Clears itself after a few
+     * seconds because it describes something that already finished - a confirmation still
+     * sitting there minutes later starts looking like a message about the CURRENT state.
+     *
+     * kind is 'ok' for a write that happened and 'info' for one that was not needed.
+     */
+    function showPageNotice(message, kind) {
+        var notice = document.getElementById('profilePageNotice');
+        if (!notice) return;
+
+        // Any previous countdown is abandoned, so a second save gets its own full dwell
+        // rather than inheriting whatever was left of the first.
+        if (noticeTimer) {
+            clearTimeout(noticeTimer);
+        }
+
+        notice.className = 'page-notice ' + (kind || 'ok');
+
+        // Revealed before the text is written, for the same reason as the error banner:
+        // a live region that changes while it is out of the accessibility tree may never
+        // be announced.
+        notice.style.display = 'block';
+        notice.textContent = message;
+
+        noticeTimer = setTimeout(hidePageNotice, 5000);
+    }
+
+    function hidePageNotice() {
+        var notice = document.getElementById('profilePageNotice');
+        if (!notice) return;
+
+        if (noticeTimer) {
+            clearTimeout(noticeTimer);
+            noticeTimer = null;
+        }
+
+        notice.style.display = 'none';
+        notice.textContent = '';
     }
 
     function setUserNameFeedback(message, kind) {
@@ -648,8 +779,7 @@
     }
 
     function clearUserNameFeedback() {
-        userNameCheck.verifiedUserName = null;
-        userNameCheck.takenUserName = null;
+        takenUserName = null;
         setUserNameFeedback('', null);
     }
 

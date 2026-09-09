@@ -1,6 +1,10 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using FormBuilderAppService.Data;
+using FormBuilderAppService.Models.DTOs.Auth;
 using FormBuilderAppService.Models.Identity;
 using FormBuilderAppService.Pdf;
 using FormBuilderAppService.Repositories;
@@ -225,6 +229,124 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// ---------------------------------------------------------------------------
+// Rate limiting for the self-service endpoints on AuthController.
+//
+// Why this exists: AuthService.ChangePasswordAsync verifies the current password with
+// CheckPasswordAsync rather than CheckPasswordSignInAsync, deliberately, so that typos
+// on your own profile page cannot lock you out of your own account. The cost of that
+// choice is that failures count towards nothing at all - and CurrentPassword is the one
+// thing standing between a STOLEN TOKEN and taking the account over outright. Without a
+// throttle, whoever holds that token can grind the password at full request rate.
+//
+// This is deliberately NOT Identity's lockout. Being refused here must never make the
+// login path unusable, or an attacker with a token could lock the real owner out just by
+// guessing badly - which is exactly the outcome CheckPasswordAsync was chosen to avoid.
+//
+// Two known limits, neither of which is worth more machinery at this size:
+//   - The state is in-memory, so the budget is per process. A multi-instance deployment
+//     would need a distributed store to be exact; until then each instance enforces its
+//     own copy, which still bounds the total.
+//   - A window limiter counts successful calls as well as failed ones. For endpoints a
+//     human touches a handful of times a day that is fine, and it avoids a second,
+//     hand-rolled failure counter that would have to be kept correct on its own.
+// ---------------------------------------------------------------------------
+// Ten attempts per window for both. Generous for somebody mistyping a password they
+// know, or pressing Verify on a few candidate names; useless for working through a word
+// list. Declared here rather than inline because OnRejected below needs them too - the
+// Retry-After it sends has to be the window the caller is actually waiting out.
+var passwordWindow = TimeSpan.FromMinutes(15);
+var userNameWindow = TimeSpan.FromMinutes(1);
+
+var windowByPolicy = new Dictionary<string, TimeSpan>
+{
+    [RateLimitPolicies.SelfServicePassword] = passwordWindow,
+    [RateLimitPolicies.SelfServiceUserName] = userNameWindow
+};
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        // Tell the caller how long to wait rather than leaving them to guess. CORS
+        // already exposes Retry-After (see AddCors above), so the browser can read it.
+        //
+        // The limiter is asked first, but the window limiters do not always attach
+        // RetryAfter metadata to a rejected lease - verified against this build, where a
+        // 429 arrived with no header at all. The policy's own window is the fallback: it
+        // is the longest the caller could possibly have to wait, so it is never an
+        // under-estimate that sends them back too early.
+        var wait = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+            ? retryAfter
+            : LookUpWindow(context.HttpContext);
+
+        if (wait > TimeSpan.Zero)
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(wait.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        }
+
+        // Same shape as every other error body on this API, so the frontend's existing
+        // error handling reports it instead of falling back to "something went wrong".
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "Too many attempts. Wait a few minutes and try again." },
+            cancellationToken);
+    };
+
+    options.AddPolicy(RateLimitPolicies.SelfServicePassword, httpContext =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            SelfServicePartitionKey(httpContext),
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = passwordWindow,
+                SegmentsPerWindow = 3,
+
+                // Reject immediately. Queueing would hold the request open and hand the
+                // caller a slow drip of attempts instead of a refusal.
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy(RateLimitPolicies.SelfServiceUserName, httpContext =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            SelfServicePartitionKey(httpContext),
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = userNameWindow,
+                SegmentsPerWindow = 2,
+                QueueLimit = 0
+            }));
+
+    // Which policy refused this request, taken from the [EnableRateLimiting] attribute on
+    // the action that was about to run. Zero when the endpoint carries no policy, which
+    // leaves the header off rather than inventing a number.
+    TimeSpan LookUpWindow(HttpContext httpContext)
+    {
+        var policyName = httpContext.GetEndpoint()?.Metadata
+            .GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+
+        return policyName is not null && windowByPolicy.TryGetValue(policyName, out var window)
+            ? window
+            : TimeSpan.Zero;
+    }
+});
+
+// The budget belongs to an ACCOUNT, not a connection: the endpoints these policies guard
+// are [Authorize], and the thing being rate limited is what one token may attempt. Keying
+// on the id also means one user cannot spend anybody else's allowance.
+//
+// The address fallbacks cannot normally be reached - UseRateLimiter runs after
+// UseAuthentication, so the principal is already established - but a partition key must
+// never be null, and a single shared bucket for the unidentified would let one caller
+// exhaust it for everyone.
+static string SelfServicePartitionKey(HttpContext httpContext) =>
+    httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+    ?? httpContext.Connection.RemoteIpAddress?.ToString()
+    ?? "unidentified";
+
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -307,6 +429,11 @@ app.UseHttpsRedirection();
 // decides what they may do. Swapping these leaves every [Authorize] endpoint open.
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Must come after UseAuthentication: the policies above partition on the caller's user
+// id claim, and before authentication has run there is no principal to read it from -
+// every request would land in the same fallback bucket and share one budget.
+app.UseRateLimiter();
 
 app.MapControllers();
 

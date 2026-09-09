@@ -230,4 +230,24 @@ namespace FormBuilderAppService.Models.DTOs.Auth
         /// </summary>
         public static readonly string[] All = { Admin, User };
     }
+
+    /// <summary>
+    /// Names of the rate-limiting policies configured in Program.cs. Constants for the
+    /// same reason as RoleNames: [EnableRateLimiting] takes a string, and a policy name
+    /// that does not exist throws at request time rather than at build time.
+    /// </summary>
+    public static class RateLimitPolicies
+    {
+        /// <summary>
+        /// PUT /api/auth/password. Guards the current-password check, which is what
+        /// makes a stolen token insufficient to take an account over.
+        /// </summary>
+        public const string SelfServicePassword = "self-service-password";
+
+        /// <summary>
+        /// GET /api/auth/username-availability. Any signed-in user can call it and it
+        /// answers "does this account exist", so it is worth slowing down.
+        /// </summary>
+        public const string SelfServiceUserName = "self-service-username";
+    }
 }
