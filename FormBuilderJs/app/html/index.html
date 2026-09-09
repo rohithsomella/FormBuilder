@@ -189,11 +189,13 @@ accept=".json">
                     <div class="col-md-4">
                         <div class="form-group">
                             <label>Version</label>
-                            <input type="text"
+                            <input type="number"
+                                   min="0"
+                                   max="100"
+                                   step="1"
                                    class="form-control"
                                    id="formVersionInput"
-                                   readonly
-                                   placeholder="Auto">
+                                   value="0">
                         </div>
                     </div>
                 </div>

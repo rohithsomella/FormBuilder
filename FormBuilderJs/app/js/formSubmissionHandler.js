@@ -131,8 +131,30 @@ function transformDynamicSelectionPanels(data, formInstance, depth) {
     }
 }
 
+// Normalize an id that may have round-tripped through sessionStorage.
+// sessionStorage.setItem(key, undefined) stores the literal string "undefined",
+// which is truthy on read and silently poisons submission.form.
+function sanitizeFormId(value) {
+    if (value === null || value === undefined) return null;
+    var id = String(value).trim();
+    if (!id || id === 'undefined' || id === 'null') return null;
+    return id;
+}
+
+// Read a form id out of sessionStorage, rejecting poisoned values.
+function readStoredFormId(key) {
+    var id = sanitizeFormId(sessionStorage.getItem(key));
+    if (!id && sessionStorage.getItem(key) !== null) {
+        console.warn('⚠️ Discarding invalid ' + key + ' in sessionStorage:', sessionStorage.getItem(key));
+        sessionStorage.removeItem(key);
+    }
+    return id;
+}
+
 // Main Form Submission Handler
-function handleFormSubmission(submission, formInstance, formContainer) {
+// formIdOverride: authoritative form id supplied by the caller (the preview page
+// knows exactly which form it rendered, so it wins over sessionStorage).
+function handleFormSubmission(submission, formInstance, formContainer, formIdOverride) {
     // console.log('='.repeat(60));
     // console.log('📤 HANDLING FORM SUBMISSION');
     // console.log('='.repeat(60));
@@ -140,9 +162,9 @@ function handleFormSubmission(submission, formInstance, formContainer) {
     // console.log('Form instance:', formInstance);
     
     // Get the form ID - try multiple sources (in priority order)
-    var editingFormId = sessionStorage.getItem('editingFormId');
-    var previewFormId = sessionStorage.getItem('previewFormId');
-    var formId = editingFormId || previewFormId;
+    var editingFormId = readStoredFormId('editingFormId');
+    var previewFormId = readStoredFormId('previewFormId');
+    var formId = sanitizeFormId(formIdOverride) || editingFormId || previewFormId;
     
     // console.log('🔍 SOURCE 1 - sessionStorage:');
     // console.log('  editingFormId:', editingFormId);
@@ -154,7 +176,7 @@ function handleFormSubmission(submission, formInstance, formContainer) {
         // console.log('🔍 SOURCE 2 - submission.form:');
         // console.log('  submission.form:', submission.form);
         // console.warn('⚠️ FormId not in sessionStorage, using submission.form:', submission.form);
-        formId = submission.form;
+        formId = sanitizeFormId(submission.form);
     }
 
     // Try to get formId from form schema stored in sessionStorage
@@ -168,13 +190,7 @@ function handleFormSubmission(submission, formInstance, formContainer) {
                 // console.log('  schema.form:', schema.form);
                 // console.log('  schema.name:', schema.name);
                 // console.log('  schema.title:', schema.title);
-                if (schema._id) {
-                    // console.warn('⚠️ FormId not in sessionStorage, using schema._id:', schema._id);
-                    formId = schema._id;
-                } else if (schema.form) {
-                    // console.warn('⚠️ FormId not in sessionStorage, using schema.form:', schema.form);
-                    formId = schema.form;
-                }
+                formId = sanitizeFormId(schema._id) || sanitizeFormId(schema.form);
             }
         } catch (e) {
             // console.warn('Could not parse previewFormSchema:', e);
@@ -189,14 +205,9 @@ function handleFormSubmission(submission, formInstance, formContainer) {
         // console.log('  formInstance.formId:', formInstance.formId);
         // console.log('  formInstance.url:', formInstance.url);
         
-        if (formInstance._id) {
-            // console.warn('⚠️ FormId not in sessionStorage, using formInstance._id:', formInstance._id);
-            formId = formInstance._id;
-        } else if (formInstance.form && typeof formInstance.form === 'object') {
-            if (formInstance.form._id) {
-                // console.warn('⚠️ FormId not in sessionStorage, using formInstance.form._id:', formInstance.form._id);
-                formId = formInstance.form._id;
-            }
+        formId = sanitizeFormId(formInstance._id);
+        if (!formId && formInstance.form && typeof formInstance.form === 'object') {
+            formId = sanitizeFormId(formInstance.form._id);
         }
     }
     

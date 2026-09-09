@@ -188,7 +188,14 @@ function displayReportDialog(form, submissions) {
             var modifiedDate = submission.modifiedDate || submission.modified || submission.updatedAt;
             var formattedModDate = modifiedDate ? new Date(modifiedDate).toLocaleDateString() : 'N/A';
             var submissionId = submission.submissionId || submission.id || submission._id || '';
-            var version = submission.version || submission._vid || '1.0';
+            var formVersion = (form && (form.versionId !== undefined && form.versionId !== null ? form.versionId : (form._vid !== undefined && form._vid !== null ? form._vid : 0)));
+            var version = (submission.version !== undefined && submission.version !== null)
+                ? submission.version
+                : (submission._vid !== undefined && submission._vid !== null
+                    ? submission._vid
+                    : (submission.formVersionId !== undefined && submission.formVersionId !== null
+                        ? submission.formVersionId
+                        : formVersion));
 
             row.innerHTML =
                 '<td><input type="checkbox" class="submission-checkbox" data-index="' + index + '" title="Select this submission"></td>' +

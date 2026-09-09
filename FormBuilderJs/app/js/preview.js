@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializePreview() {
     // Get form schema from sessionStorage
     const previewFormSchema = sessionStorage.getItem('previewFormSchema');
-    let previewFormId = sessionStorage.getItem('previewFormId');
+    let previewFormId = sanitizeFormId(sessionStorage.getItem('previewFormId'));
     const submissionData = sessionStorage.getItem('submissionData');
     const isViewingSubmission = submissionData !== null;
     const formContainer = document.getElementById('previewFormContent');
@@ -101,9 +101,9 @@ function initializePreview() {
             // Use the formId from sessionStorage (set by launchForm) or from schema
             if (previewFormId) {
                 console.log('✅ Using previewFormId from sessionStorage:', previewFormId);
-            } else if (formSchema._id || formSchema.id) {
+            } else if (sanitizeFormId(formSchema._id) || sanitizeFormId(formSchema.id)) {
                 // Fallback to schema._id or schema.id
-                previewFormId = formSchema._id || formSchema.id;
+                previewFormId = sanitizeFormId(formSchema._id) || sanitizeFormId(formSchema.id);
                 sessionStorage.setItem('previewFormId', previewFormId);
                 console.log('✅ Using schema id as previewFormId:', previewFormId);
             } else {
@@ -166,13 +166,13 @@ function initializePreview() {
                     if (!isViewingSubmission) {
                         form.on('submitForm', function(submission) {
                             console.log('🔔 SUBMITFORM EVENT FIRED!', submission);
-                            handleFormSubmission(submission, form, formContainer);
+                            handleFormSubmission(submission, form, formContainer, previewFormId);
                         });
 
                         // Also try alternative events
                         form.on('submit', function(submission) {
                             console.log('🔔 SUBMIT EVENT FIRED!', submission);
-                            handleFormSubmission(submission, form, formContainer);
+                            handleFormSubmission(submission, form, formContainer, previewFormId);
                         });
                     }
 

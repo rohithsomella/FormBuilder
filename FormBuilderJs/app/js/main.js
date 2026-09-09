@@ -826,7 +826,7 @@ function ClearBuilder() {
         formTags = [];
         $('#formNameInput').val('');
         $('#formTitleInput').val('');
-        $('#formVersionInput').val('');
+        $('#formVersionInput').val(0);
         $('#tagContainer').empty();
         $('#tagInput').val('');
         console.log('✓ Form details cleared');
@@ -1152,8 +1152,17 @@ function PreviewFormWithMode(mode) {
         // Store schema in sessionStorage and open new page
         console.log('📄 Opening form preview in new page');
         
-        // Get the form ID if the form has been saved
-        const editingFormId = sessionStorage.getItem('editingFormId');
+        // Get the form ID if the form has been saved.
+        // Guard against the literal string "undefined"/"null" left behind by a
+        // sessionStorage.setItem() call that was handed an undefined value.
+        const rawEditingFormId = sessionStorage.getItem('editingFormId');
+        const editingFormId = (rawEditingFormId && rawEditingFormId !== 'undefined' && rawEditingFormId !== 'null')
+            ? rawEditingFormId
+            : null;
+        if (rawEditingFormId && !editingFormId) {
+            console.warn('⚠️ Discarding invalid editingFormId in sessionStorage:', rawEditingFormId);
+            sessionStorage.removeItem('editingFormId');
+        }
         
         // Ensure formSchema includes the _id
         if (editingFormId && !formSchema._id) {
@@ -1526,13 +1535,18 @@ if (typeof $ !== 'undefined') {
             if (editingFormDataStr) {
                 try {
                     var editingFormData = JSON.parse(editingFormDataStr);
-                    if (editingFormData.versionId) {
+                    if (editingFormData.versionId !== undefined && editingFormData.versionId !== null) {
                         $('#formVersionInput').val(editingFormData.versionId);
                         console.log('✓ Version populated:', editingFormData.versionId);
+                    } else {
+                        $('#formVersionInput').val(0);
                     }
                 } catch (e) {
                     console.error('Error parsing version from editing data:', e);
+                    $('#formVersionInput').val(0);
                 }
+            } else {
+                $('#formVersionInput').val(0);
             }
             
             // Check if in edit mode
@@ -1643,6 +1657,9 @@ if (typeof $ !== 'undefined') {
             // Re-fetch schema in case auto-fix modified keys
             const finalSchema = builderInstance.schema;
             
+            const selectedVersion = parseInt($('#formVersionInput').val(), 10) || 0;
+            $('#formVersionInput').val(selectedVersion);
+
             // Update the current form name
             currentFormName = newFormName;
             
@@ -1675,6 +1692,7 @@ if (typeof $ !== 'undefined') {
                         title: $('#formTitleInput').val() || currentFormName,
                         tags: formTags,
                         components: JSON.stringify(finalSchema),
+                        versionId: selectedVersion,
                         // Include tenant ID if this form belongs to a tenant
                         tenantId: editingFormData.tenantId || sessionStorage.getItem('editingFormTenantId')
                     };
@@ -1682,8 +1700,7 @@ if (typeof $ !== 'undefined') {
                     FormBuilderApi.updateForm(updateData,
                         function(response) {
                             console.log('Form updated successfully:', response);
-                            // Store the editing form ID for preview and submission
-                            sessionStorage.setItem('editingFormId', editingFormData.formId);
+                        
                             $('#formDetailsModal').modal('hide');
                             alert('Form updated successfully!');
                             $(self).prop('disabled', false).text('Update');
@@ -1706,6 +1723,7 @@ if (typeof $ !== 'undefined') {
                     title: newFormName,
                     tags: formTags,
                     components: JSON.stringify(finalSchema),
+                    versionId: selectedVersion,
                     // Include tenant ID if this form is being created for a tenant
                     tenantId: sessionStorage.getItem('editingFormTenantId') || null
                 };
@@ -1730,7 +1748,8 @@ if (typeof $ !== 'undefined') {
                             name: saveData.name,
                             title: saveData.title,
                             tags: saveData.tags,
-                            components: saveData.components
+                            components: saveData.components,
+                            versionId: selectedVersion
                         };
                         
                         sessionStorage.setItem('editingFormData', JSON.stringify(editingData));
