@@ -160,6 +160,7 @@ var UserDetailsHandler = (function () {
         // Typing invalidates a previous verification - otherwise the tick from
         // "alice" would still be showing after the box was changed to "alicia".
         on('addUserUserName', 'input', function () {
+            forceLowerCase('addUserUserName');
             clearUserNameFeedback(addUserNameCheck);
         });
 
@@ -555,6 +556,7 @@ var UserDetailsHandler = (function () {
         // Typing invalidates a previous verification, the same way the Add dialog's box
         // does - a tick earned by one name must not still be showing under another.
         on('editUserName', 'input', function () {
+            forceLowerCase('editUserName');
             clearUserNameFeedback(editUserNameCheck);
         });
 
@@ -991,6 +993,37 @@ var UserDetailsHandler = (function () {
     function getValue(id) {
         var el = byId(id);
         return el ? el.value.trim() : '';
+    }
+
+    /**
+     * Holds a username box to lower case while it is being typed in.
+     *
+     * The API's username rule is lower case only, so a shifted key is corrected on the
+     * spot rather than refused later - the box cannot end up holding a name that Save
+     * would come back and reject. Pasting goes through the same 'input' event, so it is
+     * covered too.
+     *
+     * Lower-casing never changes the length, so the caret is put back where it was
+     * instead of jumping to the end of the box on every capital typed mid-word.
+     */
+    function forceLowerCase(id) {
+        var el = byId(id);
+        if (!el) return;
+
+        var lowered = el.value.toLowerCase();
+        if (lowered === el.value) return;
+
+        var start = el.selectionStart;
+        var end = el.selectionEnd;
+
+        el.value = lowered;
+
+        // Assigning value drops the selection, so it is restored - but only for the box
+        // actually being typed in, since setSelectionRange elsewhere would scroll a
+        // box the user is not looking at.
+        if (document.activeElement === el && start !== null) {
+            el.setSelectionRange(start, end);
+        }
     }
 
     /**

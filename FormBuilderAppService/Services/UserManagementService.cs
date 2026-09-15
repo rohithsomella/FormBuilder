@@ -23,7 +23,7 @@ namespace FormBuilderAppService.Services
         /// still validates on create, so this cannot let a bad name through.
         /// </summary>
         private static readonly Regex UserNamePattern =
-            new(@"^[A-Za-z0-9._@+\-]{3,50}$", RegexOptions.Compiled);
+            new(@"^[a-z0-9._@+\-]{3,50}$", RegexOptions.Compiled);
 
         private static readonly EmailAddressAttribute EmailValidator = new();
 
@@ -733,8 +733,8 @@ namespace FormBuilderAppService.Services
 
             if (!UserNamePattern.IsMatch(userName))
             {
-                return "Username must be 3-50 characters and may only contain letters, " +
-                       "digits and . _ - @ +";
+                return "Username must be 3-50 characters and may only contain lowercase " +
+                       "letters, digits and . _ - @ +";
             }
 
             return null;

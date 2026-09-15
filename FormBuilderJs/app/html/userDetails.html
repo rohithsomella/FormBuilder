@@ -129,7 +129,7 @@
             <div class="edit-field locked" id="editFieldUserName">
                 <label class="edit-field-label" for="editUserName">Username</label>
                 <div class="edit-field-control">
-                    <input type="text" class="modal-input" id="editUserName" autocomplete="off" disabled>
+                    <input type="text" class="modal-input" id="editUserName" autocomplete="off" autocapitalize="none" disabled>
                     <!-- Same check as the Add dialog, but told which account is being
                          edited - so leaving the name alone and pressing Verify does not
                          report the user's own username back as taken. -->
@@ -286,7 +286,7 @@
             <div class="modal-form-group">
                 <label class="modal-label" for="addUserUserName">Username:</label>
                 <div class="input-with-button">
-                    <input type="text" class="modal-input" id="addUserUserName" placeholder="Enter username" autocomplete="off">
+                    <input type="text" class="modal-input" id="addUserUserName" placeholder="Enter username" autocomplete="off" autocapitalize="none">
                     <button type="button" class="btn-verify" id="btnVerifyUserName">Verify</button>
                 </div>
                 <div class="username-feedback" id="userNameFeedback"></div>

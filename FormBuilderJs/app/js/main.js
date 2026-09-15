@@ -1613,6 +1613,42 @@ if (typeof $ !== 'undefined') {
             }
         });
 
+        // Version Input Validation (whole numbers only)
+        $('#formVersionInput').on('keypress', function (e) {
+            // Only allow digits 0-9
+            let char = String.fromCharCode(e.which);
+            if (!/[0-9]/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        $('#formVersionInput').on('input', function (e) {
+            let value = $(this).val();
+            // Remove any non-numeric characters
+            let cleanValue = value.replace(/[^0-9]/g, '');
+
+            // Update if value changed
+            if (cleanValue !== value) {
+                $(this).val(cleanValue);
+            }
+        });
+
+        $('#formVersionInput').on('paste', function (e) {
+            e.preventDefault();
+            let pastedText = (e.originalEvent || e).clipboardData.getData('text');
+            let cleanValue = pastedText.replace(/[^0-9]/g, '');
+            $(this).val(cleanValue);
+        });
+
+        $('#formVersionInput').on('blur', function () {
+            let value = $(this).val();
+            // Ensure value is a whole number or default to 0
+            if (!/^\d+$/.test(value)) {
+                $(this).val('0');
+            }
+        });
+
         $(document).on('click', '.tag-remove', function () {
 
             $(this).parent().remove();

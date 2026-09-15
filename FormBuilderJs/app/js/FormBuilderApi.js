@@ -964,6 +964,7 @@ var FormBuilderApi = (function() {
             tags: formData.tags || [],
             // Ensure components is a string (JSON stringified)
             components: typeof formData.components === 'string' ? formData.components : JSON.stringify(formData.components || {}),
+            versionId: formData.versionId || 0,
             tenantId: tenantId
         };
 
@@ -1032,6 +1033,7 @@ var FormBuilderApi = (function() {
             tags: formData.tags || [],
             // Ensure components is a string (JSON stringified)
             components: typeof formData.components === 'string' ? formData.components : JSON.stringify(formData.components || {}),
+            versionId: formData.versionId || 0,
             // Include tenantId
             tenantId: tenantId
         };
