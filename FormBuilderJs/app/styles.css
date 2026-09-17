@@ -165,6 +165,12 @@ input:checked + .slider:before {
     box-sizing: border-box !important;
 }
 
+/* Data Grid builder drop zone: Bootstrap's .col-md-3 sets width:100%, which a <td>
+   treats as a 100%-wide table column and starves the real data columns. */
+#builder .formio-component-datagrid .datagrid-table > tbody > tr > td[ref$="-container"] {
+    width: 20%;
+}
+
 #builder > div {
     width: 100% !important;
 }
