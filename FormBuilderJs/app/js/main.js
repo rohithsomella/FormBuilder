@@ -1169,7 +1169,21 @@ function PreviewFormWithMode(mode) {
             formSchema._id = editingFormId;
             console.log('✅ Added editingFormId to schema._id:', editingFormId);
         }
-        
+
+        // Ensure formSchema carries the form version so submissions from the
+        // preview page are saved with the correct _fvid.
+        if (formSchema._vid === undefined || formSchema._vid === null) {
+            var versionInputVal = parseInt($('#formVersionInput').val(), 10);
+            if (!isNaN(versionInputVal)) {
+                formSchema._vid = versionInputVal;
+            } else if (editingFormData && editingFormData.versionId !== undefined && editingFormData.versionId !== null) {
+                formSchema._vid = editingFormData.versionId;
+            } else {
+                formSchema._vid = 0;
+            }
+            console.log('✅ Added version to schema._vid:', formSchema._vid);
+        }
+
         sessionStorage.setItem('previewFormSchema', JSON.stringify(formSchema));
         
         if (editingFormId) {

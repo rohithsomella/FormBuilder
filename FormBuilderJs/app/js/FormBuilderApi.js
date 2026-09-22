@@ -1330,6 +1330,14 @@ var FormBuilderApi = (function() {
         const actualFormId = form._id || form.id;
         console.log('Actual form ID to use:', actualFormId);
         
+        // The API returns the form's version as `versionId` (FormDto); raw Mongo docs use `_vid`.
+// This value becomes the submission's `_fvid`, so it must be the real version.
+	const formVersion = (form.versionId !== undefined && form.versionId !== null)
+	    ? form.versionId
+	    : (form._vid !== undefined && form._vid !== null)
+	        ? form._vid
+	        : 0;
+
         // Create a proper Formio form schema - INCLUDE THE _id!
         const formSchema = {
             _id: actualFormId,  // ✅ Include the MongoDB ObjectId
@@ -1338,11 +1346,11 @@ var FormBuilderApi = (function() {
             title: form.title || form.name || 'Untitled Form',
             name: form.name || 'form',
             components: components || [],
-            _vid: form._vid || 0  // ✅ Include form version
+            _vid: formVersion  // ✅ Include form version
         };
-        
+
         console.log('📄 Creating form schema for preview with _id:', actualFormId);
-        console.log('📄 Creating form schema with _vid:', form._vid || 0);
+        console.log('📄 Creating form schema with _vid:', formVersion);
         
         // Store form schema in sessionStorage
         sessionStorage.setItem('previewFormSchema', JSON.stringify(formSchema));

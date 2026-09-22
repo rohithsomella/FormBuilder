@@ -19,6 +19,19 @@ function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
 }
 
+/**
+ * Get the form version a submission was made against.
+ * The API serializes FormSubmission.FormVersionId as `_fvid`.
+ * @param {Object} submission - Submission object
+ * @returns {Number} Version id (0 if not recorded)
+ */
+function getSubmissionVersion(submission) {
+    if (!submission) return 0;
+    if (submission._fvid !== undefined && submission._fvid !== null) return submission._fvid;
+    if (submission.formVersionId !== undefined && submission.formVersionId !== null) return submission.formVersionId;
+    return 0;
+}
+
 function clearPreviewSessionStorage() {
     sessionStorage.removeItem('submissionData');
     sessionStorage.removeItem('previewFormId');
@@ -188,14 +201,9 @@ function displayReportDialog(form, submissions) {
             var modifiedDate = submission.modifiedDate || submission.modified || submission.updatedAt;
             var formattedModDate = modifiedDate ? new Date(modifiedDate).toLocaleDateString() : 'N/A';
             var submissionId = submission.submissionId || submission.id || submission._id || '';
-            var formVersion = (form && (form.versionId !== undefined && form.versionId !== null ? form.versionId : (form._vid !== undefined && form._vid !== null ? form._vid : 0)));
-            var version = (submission.version !== undefined && submission.version !== null)
-                ? submission.version
-                : (submission._vid !== undefined && submission._vid !== null
-                    ? submission._vid
-                    : (submission.formVersionId !== undefined && submission.formVersionId !== null
-                        ? submission.formVersionId
-                        : formVersion));
+            // Version the form had when this submission was made (stored as _fvid),
+            // not the form's current version.
+            var version = getSubmissionVersion(submission);
 
             row.innerHTML =
                 '<td><input type="checkbox" class="submission-checkbox" data-index="' + index + '" title="Select this submission"></td>' +
@@ -563,18 +571,19 @@ function exportToCsv(submissions, formName) {
         return parts[parts.length - 1];
     });
 
-    // Create header row: Form Name, Form ID, Submission Date, then all other keys (leaf names only)
-    var headerRow = ['Form Name', 'Form ID', 'Submission Date'].concat(leafKeyNames);
+    // Create header row: Form Name, Version, Submission Date, then all other keys (leaf names only)
+    var headerRow = ['Form Name', 'Version', 'Submission Date'].concat(leafKeyNames);
     var csv = headerRow.map(function (header) {
         return escapeCsvValue(header);
     }).join(',') + '\n';
     // Add data rows
     submissions.forEach(function (submission, index) {
         var flattened = flattenedSubmissions[index];
+        var submissionDate = submission.submissionDate || submission.created || submission.createdAt;
         var rowValues = [
             formName || '',
-            submission.formId || '',
-            submission.submissionDate ? new Date(submission.submissionDate).toLocaleString() : ''
+            getSubmissionVersion(submission),
+            submissionDate ? new Date(submissionDate).toLocaleString() : ''
         ];
         // Add values for all keys (empty string if key not present in this submission)
         sortedKeys.forEach(function (key) {
