@@ -961,7 +961,7 @@ var FormBuilderApi = (function() {
         var payload = {
             name: formData.name || '',
             title: formData.title || '',
-            tags: formData.tags || [],
+            tags: (formData.tags || []).map(function(t) { return t.toUpperCase(); }),
             // Ensure components is a string (JSON stringified)
             components: typeof formData.components === 'string' ? formData.components : JSON.stringify(formData.components || {}),
             versionId: formData.versionId || 0,
@@ -1030,7 +1030,7 @@ var FormBuilderApi = (function() {
             id: formData.id,
             name: formData.name || '',
             title: formData.title || '',
-            tags: formData.tags || [],
+            tags: (formData.tags || []).map(function(t) { return t.toUpperCase(); }),
             // Ensure components is a string (JSON stringified)
             components: typeof formData.components === 'string' ? formData.components : JSON.stringify(formData.components || {}),
             versionId: formData.versionId || 0,
@@ -1498,8 +1498,7 @@ function displayPaginatedForms() {
     var pageItems = paginationState.filteredForms.slice(startIndex, endIndex);
 
     pageItems.forEach(function (form) {
-        var tagsDisplay = (form.tags || []).join(', ');
-        // Show Updated if available, otherwise Created
+        var tagsDisplay = (form.tags || []).map(function(t) { return t.toUpperCase(); }).join(', ');
         var dateText = '';
 
         if (form.modified) {
@@ -1509,40 +1508,55 @@ function displayPaginatedForms() {
             dateText = 'Created: ' + new Date(form.created).toLocaleString();
         }
 
+        var dateTagsLine = dateText;
+        if (tagsDisplay) {
+            dateTagsLine += '  |  ' + escapeHtml(tagsDisplay);
+        }
+
+        var dropdownId = 'actionDropdown_' + form.id;
+
         var row = document.createElement('tr');
 
         row.innerHTML =
             '<td>' +
                 '<strong>' + escapeHtml(form.title || '') + '</strong><br>' +
-                '<small class="text-muted">' + dateText + '</small>' +
+                '<small class="text-muted">' + dateTagsLine + '</small>' +
             '</td>' +
 
             '<td style="text-align:right;">' +
-                escapeHtml(tagsDisplay) +
-            '</td>' +
+                '<div class="form-actions d-inline-flex align-items-center">' +
 
-            '<td style="text-align:right;">' +
+                    '<button class="btn btn-sm btn-outline-primary" title="Edit form details" onclick="FormBuilderApi.editForm(\'' + form.id + '\')">' +
+                        '<i class="bi bi-pencil"></i> Edit' +
+                    '</button> ' +
 
-                '<button class="btn btn-sm btn-primary" title="Edit form details" onclick="FormBuilderApi.editForm(\'' + form.id + '\')">' +
-                    '<i class="bi bi-pencil"></i>' +
-                '</button> ' +
+                    '<button class="btn btn-sm btn-outline-secondary" title="Copy form schema" onclick="FormBuilderApi.copyForm(\'' + form.id + '\')">' +
+                        '<i class="bi bi-copy"></i> Copy' +
+                    '</button> ' +
 
-                '<button class="btn btn-sm btn-secondary" title="Copy form schema" onclick="FormBuilderApi.copyForm(\'' + form.id + '\')">' +
-                    '<i class="bi bi-copy"></i>' +
-                '</button> ' +
+                    '<button class="btn btn-sm btn-outline-info" title="Preview form" onclick="FormBuilderApi.launchForm(\'' + form.id + '\')">' +
+                        '<i class="bi bi-box-arrow-up-right"></i> Preview' +
+                    '</button> ' +
 
-                '<button class="btn btn-sm btn-info" title="Preview form" onclick="FormBuilderApi.launchForm(\'' + form.id + '\')">' +
-                    '<i class="bi bi-box-arrow-up-right"></i>' +
-                '</button> ' +
+                    '<div class="dropdown d-inline-block">' +
+                        '<button class="btn btn-sm btn-secondary" type="button" id="' + dropdownId + '" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="More actions">' +
+                            '<i class="bi bi-gear"></i>' +
+                        '</button>' +
+                        '<ul class="dropdown-menu dropdown-menu-right" aria-labelledby="' + dropdownId + '">' +
+                            '<li>' +
+                                '<a class="dropdown-item" href="#" onclick="event.preventDefault(); FormBuilderApi.downloadAcroFormPdf(\'' + form.id + '\', this)">' +
+                                    '<i class="bi bi-file-earmark-pdf text-success"></i> AcroForm PDF' +
+                                '</a>' +
+                            '</li>' +
+                            '<li>' +
+                                '<a class="dropdown-item text-danger" href="#" onclick="event.preventDefault(); FormBuilderApi.deleteForm(\'' + form.id + '\')">' +
+                                    '<i class="bi bi-trash"></i> Delete' +
+                                '</a>' +
+                            '</li>' +
+                        '</ul>' +
+                    '</div>' +
 
-                '<button class="btn btn-sm btn-outline-danger" title="Download fillable AcroForm PDF" onclick="FormBuilderApi.downloadAcroFormPdf(\'' + form.id + '\', this)">' +
-                    '<i class="bi bi-file-earmark-pdf"></i>' +
-                '</button> ' +
-
-                '<button class="btn btn-sm btn-danger" title="Delete form" onclick="FormBuilderApi.deleteForm(\'' + form.id + '\')">' +
-                    '<i class="bi bi-trash"></i>' +
-                '</button>' +
-
+                '</div>' +
             '</td>';
 
         tableBody.appendChild(row);

@@ -11,6 +11,16 @@
 // appsettings.json - so Jwt:Issuer, Jwt:Audience and Jwt:ExpirationMinutes still come
 // from the base file.
 {
+  // REQUIRED. appsettings.json ships a placeholder for this key and must keep it: that
+  // file is committed, and a real connection string carries a real password. Put the
+  // working value here instead - this file is git-ignored.
+  //
+  // In production it comes from the CONNECTIONSTRINGS__PRACTICEDB environment variable
+  // or user-secrets, and this file is never deployed.
+  "ConnectionStrings": {
+    "PracticeDB": "Data Source=YOUR-SERVER;Initial Catalog=FormBuilderApp;User ID=YOUR-USER;Password=YOUR-PASSWORD;Pooling=false;TrustServerCertificate=True"
+  },
+
   "Logging": {
     "LogLevel": {
       "Default": "Information",

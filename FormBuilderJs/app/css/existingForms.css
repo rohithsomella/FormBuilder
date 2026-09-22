@@ -58,6 +58,19 @@
     margin-bottom: 20px;
 }
 
+/* Action buttons in forms table (Bootstrap 4 has no flex gap utility) */
+.form-actions > * + * {
+    margin-left: 14px;
+}
+
+/* Flatly gives dropdown items a deep navy hover; match the subtler .table-hover row instead */
+.form-actions .dropdown-item:hover,
+.form-actions .dropdown-item:focus,
+.form-actions .dropdown-item:active {
+    color: #212529;
+    background-color: rgba(0, 0, 0, 0.075);
+}
+
 /* Search and Filter Controls */
 .table-controls {
     display: flex;

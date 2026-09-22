@@ -227,7 +227,7 @@ namespace FormBuilderAppService.Repositories
                 VersionId = dto.VersionId,
                 Created = dto.Created,
                 Modified = dto.Modified,
-                Tags = dto.Tags ?? new(),
+                Tags = (dto.Tags ?? new()).Select(t => t.ToUpperInvariant()).ToList(),
                 // Normalize TenantId to uppercase for consistent case-insensitive filtering
                 TenantId = dto.TenantId.HasValue ? new Guid(dto.TenantId.ToString().ToUpper()) : null
             };
